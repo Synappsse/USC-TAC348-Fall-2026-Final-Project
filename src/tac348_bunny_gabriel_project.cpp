@@ -49,8 +49,9 @@ User users[] = {
     User("USER003", "32 7F D0 55", false, 1)
 };
 
-const int NUM_USERS = sizeof(users); //keeps track of user amount in database
+const int NUM_USERS = sizeof(users) / sizeof(users[0]);//keeps track of user amount in database
 int selectedUser = 0; // keeps track of which user is currently being viewed
+
 /****************************************************************************
 Item: Show message on OLED
 Purpose: Takes inputs for OLED and prints them out. Helps display user 
@@ -67,6 +68,31 @@ void showMessage(String line1, String line2, String line3) {
 
     oled.display();
 }
+
+
+/****************************************************************************
+Item: Write to user 
+Purpose: Unlocks user accounts if an admin sends the unlock request 
+****************************************************************************/
+// Read the user selected in the Blynk app
+BLYNK_WRITE(V0) {
+    int choice = param.asInt();
+
+    if (choice >= 0 && choice < NUM_USERS) {
+        selectedUser = choice;
+
+        Serial.print("Admin selected: ");
+        Serial.println(users[selectedUser].userID);
+    }
+}
+
+// Read the clear restriction button
+BLYNK_WRITE(V1) {
+    if (param.asInt() == 1) {
+        Serial.print("Clear restriction requested for:" + users[selectedUser].userID);
+    }
+}
+
 
 /*****************************************************************************
 Item: Setup function
@@ -86,6 +112,10 @@ void setup() {
 
     // Display the startup message
     showMessage("IT LOANS", "SCAN CARD", "");
+
+    // Connect to Blynk for admin controls
+    delay(5000);
+    Blynk.begin(BLYNK_AUTH_TOKEN);
 }
 
 /*****************************************************************************
@@ -93,6 +123,9 @@ Item: Main Loop
 Purpose: Keeps the system running once setup is complete. 
 *****************************************************************************/
 void loop() {
+    //starts communication with the Blynk app
+    Blynk.run();
+
     //if no card is available, do nothing
     if (!mfrc522.PICC_IsNewCardPresent()) {
         return;
@@ -113,7 +146,7 @@ void loop() {
         scanId += String(mfrc522.uid.uidByte[i], HEX);
     }
    
-    //Clean up card ID and present output based on current database
+    //Clean up card ID text and present output based on current database
     scanId.toUpperCase(); 
     Serial.println("**************************");
     Serial.print("Scanned UID: ");
@@ -163,6 +196,8 @@ void loop() {
     }
     mfrc522.PICC_HaltA();
 
+    /*
     delay(2000);
     showMessage("IT LOANS", "SCAN CARD", "");
+    */
 }
