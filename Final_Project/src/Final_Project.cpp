@@ -54,6 +54,19 @@ User users[] = {
 
 const int NUM_USERS = sizeof(users) / sizeof(users[0]);//keeps track of user amount in database
 int selectedUser = -1; // keeps track of which user is currently being viewed. set to -1 to prevent incorrect selection
+bool userRequestSent = false;
+
+//Attempt to retrieve up to date account on users from Losant
+void onUserLookup(const char *event, const char *data) {
+    Serial.println("**************************");
+    Serial.print("Losant response event: ");
+    Serial.println(event);
+    Serial.println("**************************");
+
+    if (data != NULL) {
+        Serial.println(data);
+    }
+}
 
 /****************************************************************************
 Item: Show message on OLED
@@ -91,7 +104,6 @@ BLYNK_WRITE(V0) {
 
 //read the selected user and check to see if the restriction can be cleared
 BLYNK_WRITE(V1) {
-
     //reqrites the parameter as an integer so we can read it
     if (param.asInt() == 1) {
 
@@ -111,6 +123,7 @@ BLYNK_WRITE(V1) {
             //losant webhook: https://triggers.losant.com/webhooks/PoojXddN0X6lCraRojiseg6MS_ZgqerYXxfTZZ-X
             Particle.publish("it_restriction_cleared", users[selectedUser].userID);
         }
+        
         //If something went wrong just throw an error
         else {
             Serial.println("Error. Please select a user first.");
@@ -143,6 +156,9 @@ void setup() {
     // Connect to Blynk for admin controls
     delay(5000);
 
+    //subsrcibe to any updates for user accounts
+    Particle.subscribe("hook-response/it_users_request", onUserLookup);
+
     Serial.println("Connecting to Blynk...");
     Blynk.begin(BLYNK_AUTH_TOKEN);
     Serial.println("Blynk connection finished!");
@@ -155,6 +171,20 @@ Purpose: Keeps the system running once setup is complete.
 void loop() {
     //starts communication with the Blynk app
     Blynk.run();
+
+    //Request the most up to date user acc info 
+
+// Request saved users once after startup
+   static unsigned long loopStartTime = millis();
+
+   //if we are on time and ready to begin, lookup the user records
+    if (!userRequestSent && Particle.connected() && millis() - loopStartTime >= 3000) {
+        userRequestSent = true;
+
+        Serial.println("Requesting user records from Losant...");
+        Particle.publish("it_users_request", "load");
+    }
+
 
     //if no card is available, do nothing
     if (!mfrc522.PICC_IsNewCardPresent()) {
