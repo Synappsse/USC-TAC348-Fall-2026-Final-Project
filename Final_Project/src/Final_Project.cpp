@@ -53,7 +53,7 @@ User users[] = {
 };
 
 const int NUM_USERS = sizeof(users) / sizeof(users[0]);//keeps track of user amount in database
-int selectedUser = 0; // keeps track of which user is currently being viewed
+int selectedUser = -1; // keeps track of which user is currently being viewed. set to -1 to prevent incorrect selection
 
 /****************************************************************************
 Item: Show message on OLED
@@ -89,12 +89,31 @@ BLYNK_WRITE(V0) {
     }
 }
 
-// Read the clear restriction button
+//read the selected user and check to see if the restriction can be cleared
 BLYNK_WRITE(V1) {
+
+    //reqrites the parameter as an integer so we can read it
     if (param.asInt() == 1) {
-        Serial.print("Clear restriction requested for:" + users[selectedUser].userID);
+
+        if (selectedUser >= 0 && selectedUser < NUM_USERS) { //if the selected user exists....
+
+            // Remove the account restriction
+            users[selectedUser].isLATE = false;
+
+            Serial.print("Restriction cleared for: ");
+            Serial.println(users[selectedUser].userID);
+
+            //test to ensure late count still works
+            Serial.print("Late Return Count: ");
+            Serial.println(users[selectedUser].lateCOUNT);
+        }
+        //If something went wrong just throw an error
+        else {
+            Serial.println("Error. Please select a user first.");
+        }
     }
 }
+
 
 
 /*****************************************************************************
@@ -117,8 +136,12 @@ void setup() {
     showMessage("IT LOANS", "SCAN CARD", "");
 
     // Connect to Blynk for admin controls
+    // Connect to Blynk for admin controls
     delay(5000);
+
+    Serial.println("Connecting to Blynk...");
     Blynk.begin(BLYNK_AUTH_TOKEN);
+    Serial.println("Blynk connection finished!");
 }
 
 /*****************************************************************************
