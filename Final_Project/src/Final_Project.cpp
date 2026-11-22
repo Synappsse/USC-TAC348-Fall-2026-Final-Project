@@ -1,4 +1,3 @@
-
 #include "Particle.h"
 
 SYSTEM_MODE(AUTOMATIC);
@@ -8,6 +7,9 @@ SYSTEM_THREAD(ENABLED);
 #define BLYNK_TEMPLATE_NAME "Final Project"
 #define BLYNK_AUTH_TOKEN "U406i38WWsQGzZvp4W4_z7iiS3mOXgHH"
 
+#define ARDUINOJSON_ENABLE_ARDUINO_STRING 1
+
+#include <ArduinoJson.h>
 #include <blynk.h>
 #include <MFRC522.h>
 #include <SparkFunMicroOLED.h>
@@ -54,19 +56,80 @@ User users[] = {
 
 const int NUM_USERS = sizeof(users) / sizeof(users[0]);//keeps track of user amount in database
 int selectedUser = -1; // keeps track of which user is currently being viewed. set to -1 to prevent incorrect selection
-bool userRequestSent = false;
+bool userRequestSent = false; //starting flag for user database request
+bool accountsLoaded = false; //starting flag to check on status and validity of database transfer
 
 //Attempt to retrieve up to date account on users from Losant
-void onUserLookup(const char *event, const char *data) {
-    Serial.println("**************************");
-    Serial.print("Losant response event: ");
-    Serial.println(event);
-    Serial.println("**************************");
 
-    if (data != NULL) {
-        Serial.println(data);
+void onUserLookup(const char *event, const char *data) {
+    //if we don't recieve anything, do nothing
+    if (data == NULL) {
+        return;
     }
+
+    // Parse the JSON and manage any errors
+    StaticJsonDocument<1024> doc;
+    DeserializationError error = deserializeJson(doc, data);
+    if (error) {
+        Serial.println("Error parsing Losant JSON!");
+        return;
+    }
+
+    // Get the array of user records
+    JsonArray records = doc.as<JsonArray>();
+
+    // Create temp variables until this function is resolved completely
+    bool found[NUM_USERS] = {};
+    bool savedLate[NUM_USERS] = {};
+    int savedCount[NUM_USERS] = {};
+
+    // Check that the record contains valid fields
+    for (JsonObject record : records) {
+        if (!record["userID"].is<const char*>() ||
+            !record["isLATE"].is<bool>() ||
+            !record["lateCOUNT"].is<int>()) {
+            continue;
+        }
+
+        String id = record["userID"].as<const char*>();
+
+        // Match the Losant account to our RFID user
+        for (int i = 0; i < NUM_USERS; i++) {
+            if (id == users[i].userID) {
+                found[i] = true;
+                savedLate[i] = record["isLATE"].as<bool>();
+                savedCount[i] = record["lateCOUNT"].as<int>();
+                break;
+            }
+        }
+    }
+
+    // Only update if the correct, full database is given
+    for (int i = 0; i < NUM_USERS; i++) {
+        if (!found[i]) {
+            Serial.println("Incomplete user records from Losant!");
+            return;
+        }
+    }
+
+    // Update the Photon's local info
+    for (int i = 0; i < NUM_USERS; i++) {
+
+        users[i].isLATE = savedLate[i];
+        users[i].lateCOUNT = savedCount[i];
+
+        Serial.print("Loaded: ");
+        Serial.print(users[i].userID);
+        Serial.print(" | isLATE: ");
+        Serial.print(users[i].isLATE);
+        Serial.print(" | lateCOUNT: ");
+        Serial.println(users[i].lateCOUNT);
+    }
+
+    accountsLoaded = true;
+    Serial.println("ALL USER ACCOUNTS SYNCHRONIZED!");
 }
+
 
 /****************************************************************************
 Item: Show message on OLED
@@ -84,7 +147,6 @@ void showMessage(String line1, String line2, String line3) {
 
     oled.display();
 }
-
 
 /****************************************************************************
 Item: Write to user 
@@ -104,6 +166,11 @@ BLYNK_WRITE(V0) {
 
 //read the selected user and check to see if the restriction can be cleared
 BLYNK_WRITE(V1) {
+
+    if (!accountsLoaded) {
+      Serial.println("Cannot clear restriction: accounts not loaded.");
+      return;
+    }
     //reqrites the parameter as an integer so we can read it
     if (param.asInt() == 1) {
 
@@ -130,8 +197,6 @@ BLYNK_WRITE(V1) {
         }
     }
 }
-
-
 
 /*****************************************************************************
 Item: Setup function
@@ -185,7 +250,10 @@ void loop() {
         Particle.publish("it_users_request", "load");
     }
 
-
+    //Does not proceed until the full database is loaded
+    if (!accountsLoaded) {
+        return;
+    }
     //if no card is available, do nothing
     if (!mfrc522.PICC_IsNewCardPresent()) {
         return;
@@ -216,7 +284,7 @@ void loop() {
     //begin search for user connected to the RFID card
     bool userFound = false;
     for (int i = 0; i < NUM_USERS; i++) {
-        if (scanId == users[i].rfidUID) {
+        if (scanId == users[i].rfidUID) { //attempts to find RFIDS tag info in the database
             userFound = true;
 
             //testing output for identified users
@@ -233,25 +301,26 @@ void loop() {
                 Serial.println("ACCOUNT RESTRICTED");
                 Serial.println("ACCESS DENIED");
 
-                showMessage(users[i].userID, "USER", "LATE!        Return your item!"); // workaround to small display screen
+                showMessage(users[i].userID, "USER", "LATE!        Return your item!"); // extra space is workaround for small display screen
             }
             else {
                 Serial.println("ACCOUNT ACTIVE");
                 Serial.println("ACCESS GRANTED");
 
-                showMessage(users[i].userID, "ACCESS", "GRANTED");
+                showMessage(users[i].userID, "ACCESS", "GRANTED"); // This will display if the user is in the database AND is not overdue
 
             }
 
             // Check repeated late returns
-            if (users[i].lateCOUNT >= 3) { // this needs to be updated later for the override feature
+            if (users[i].lateCOUNT >= 3 && users[i].isLATE) { // this needs to be updated later for the override feature
                 Serial.println("USER FLAGGED");
-                Serial.println("Please speak to your admin!");
+                Serial.println("Please speak to your admin!"); //This will prompt user to request an override from admin. Admin will do this via Blynk
             }
             break;
         }
     }
 
+    //if the card we read is not in the data base, then deny access entirely
     if (userFound == false) {
         Serial.println("UNKNOWN CARD");
         Serial.println("ACCESS DENIED");
