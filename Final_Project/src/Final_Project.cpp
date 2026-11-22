@@ -106,6 +106,10 @@ BLYNK_WRITE(V1) {
             //test to ensure late count still works
             Serial.print("Late Return Count: ");
             Serial.println(users[selectedUser].lateCOUNT);
+
+            //update our information in Losant
+            //losant webhook: https://triggers.losant.com/webhooks/PoojXddN0X6lCraRojiseg6MS_ZgqerYXxfTZZ-X
+            Particle.publish("it_restriction_cleared", users[selectedUser].userID);
         }
         //If something went wrong just throw an error
         else {
