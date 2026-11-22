@@ -1,8 +1,14 @@
-/*#define BLYNK_TEMPLATE_ID "YOUR_TEMPLATE_ID"
-#define BLYNK_TEMPLATE_NAME "IT Checkout Admin"
-#define BLYNK_AUTH_TOKEN "YOUR_AUTH_TOKEN"
-*/
-// /#include <blynk.h>
+
+#include "Particle.h"
+
+SYSTEM_MODE(AUTOMATIC);
+SYSTEM_THREAD(ENABLED);
+
+#define BLYNK_TEMPLATE_ID "TMPL2OdTyJHF-"
+#define BLYNK_TEMPLATE_NAME "Final Project"
+#define BLYNK_AUTH_TOKEN "U406i38WWsQGzZvp4W4_z7iiS3mOXgHH"
+
+#include <blynk.h>
 #include <MFRC522.h>
 #include <SparkFunMicroOLED.h>
 
@@ -72,7 +78,7 @@ Item: Write to user
 Purpose: Unlocks user accounts if an admin sends the unlock request 
 ****************************************************************************/
 // Read the user selected in the Blynk app
-/*BLYNK_WRITE(V0) {
+BLYNK_WRITE(V0) {
     int choice = param.asInt();
 
     if (choice >= 0 && choice < NUM_USERS) {
@@ -90,7 +96,6 @@ BLYNK_WRITE(V1) {
     }
 }
 
-*/
 
 /*****************************************************************************
 Item: Setup function
@@ -112,8 +117,8 @@ void setup() {
     showMessage("IT LOANS", "SCAN CARD", "");
 
     // Connect to Blynk for admin controls
-    //delay(5000);
-    //Blynk.begin(BLYNK_AUTH_TOKEN);
+    delay(5000);
+    Blynk.begin(BLYNK_AUTH_TOKEN);
 }
 
 /*****************************************************************************
@@ -122,7 +127,7 @@ Purpose: Keeps the system running once setup is complete.
 *****************************************************************************/
 void loop() {
     //starts communication with the Blynk app
-    //Blynk.run();
+    Blynk.run();
 
     //if no card is available, do nothing
     if (!mfrc522.PICC_IsNewCardPresent()) {
@@ -171,7 +176,7 @@ void loop() {
                 Serial.println("ACCOUNT RESTRICTED");
                 Serial.println("ACCESS DENIED");
 
-                showMessage(users[i].userID, "USER", "LATE!            Return your item!"); // workaround to small display screen
+                showMessage(users[i].userID, "USER", "LATE!        Return your item!"); // workaround to small display screen
             }
             else {
                 Serial.println("ACCOUNT ACTIVE");
