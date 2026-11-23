@@ -21,6 +21,7 @@ const int RST_PIN = A1;
 #define PIN_RESET D9
 #define DC_JUMPER 1
 
+//Setup for pins of OLED and RFID scanner
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MicroOLED oled(MODE_I2C, PIN_RESET, DC_JUMPER);
 /****************************************************************************
@@ -47,6 +48,10 @@ public:
   should users wish to be added. As of now, the 3 users 
   are connected to the 2 cards and 1 keychain given in 
   the TAC348 class kit.
+
+  Secondly, this is the starting setup of the users database, 
+  it is automatically updated upon startup by grabbing the
+  latest information from Losant.
 */
 User users[] = {
     User("USER001", "25 F5 1D E0", false, 0), //USER001 will be the sole admin, and a tester
@@ -55,7 +60,8 @@ User users[] = {
 };
 
 const int NUM_USERS = sizeof(users) / sizeof(users[0]);//keeps track of user amount in database
-int selectedUser = -1; // keeps track of which user is currently being viewed. set to -1 to prevent incorrect selection
+int selectedUser = -1; // keeps track of which user is currently being viewed (before authorization). set to -1 to prevent incorrect selection
+int activeBorrower = -1; //keeps track of which user is actively attempting to borrow (after authentication)
 bool userRequestSent = false; //starting flag for user database request
 bool accountsLoaded = false; //starting flag to check on status and validity of database transfer
 
@@ -286,6 +292,25 @@ void loop() {
     for (int i = 0; i < NUM_USERS; i++) {
         if (scanId == users[i].rfidUID) { //attempts to find RFIDS tag info in the database
             userFound = true;
+            
+            // If this user is already logged in, log them out and prevent wasting time
+            if (activeBorrower == i) {
+                Serial.print("Goodbye!");
+                activeBorrower = -1; //resets the active user to a nonexistant number
+                showMessage("Goodbye!", "", "");
+                delay(3000);//wait 3 seconds to confirm user logout then return to main page
+                showMessage("IT LOANS", "SCAN CARD", "");
+                break;
+            }
+
+
+            if (activeBorrower != -1) { //If we are logged in as user x, but user y scans in... (-1 is the flag for NO CURRENT active user)
+                Serial.print("Station in use by: ");
+                Serial.println(users[activeBorrower].userID);
+
+                showMessage("WRONG ACTIVE USER", "PLEASE", "LOG OUT FIRST"); //let user y know they must wait
+                break;
+            }
 
             //testing output for identified users
             //prints test result of users history
@@ -303,13 +328,20 @@ void loop() {
 
                 showMessage(users[i].userID, "USER", "LATE!        Return your item!"); // extra space is workaround for small display screen
             }
+           
             else {
                 Serial.println("ACCOUNT ACTIVE");
                 Serial.println("ACCESS GRANTED");
 
-                showMessage(users[i].userID, "ACCESS", "GRANTED"); // This will display if the user is in the database AND is not overdue
+                // Log in the authenticated user
+                activeBorrower = i;
 
+                Serial.print("User logged in: ");
+                Serial.println(users[activeBorrower].userID);
+
+                showMessage(users[i].userID, "ACCESS", "GRANTED");
             }
+
 
             // Check repeated late returns
             if (users[i].lateCOUNT >= 3 && users[i].isLATE) { // this needs to be updated later for the override feature

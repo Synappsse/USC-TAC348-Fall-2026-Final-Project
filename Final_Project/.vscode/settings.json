@@ -6,5 +6,7 @@
     },
     "particle.targetDevice": "GB_P2",
     "particle.targetPlatform": "p2",
-    "particle.firmwareVersion": "6.4.1"
+    "particle.firmwareVersion": "6.4.1",
+    "cmake.sourceDirectory": "C:/Users/manha/Desktop/TAC 348/Projects/tac348_bunny_gabriel_project/TAC348-Bunny-Gabriel-Final-Project/Final_Project/lib/ArduinoJson/src",
+    "cmake.ignoreCMakeListsMissing": true
 }
