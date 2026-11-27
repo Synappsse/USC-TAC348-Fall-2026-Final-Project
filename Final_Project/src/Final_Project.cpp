@@ -38,6 +38,24 @@ const int RETURN_BEAM_PIN = D6;
 int lastBeamState = HIGH; // Remember the previous sensor reading
 bool beamWasBroken = false;//if there was an object in the sensors path or not
 
+//Pins for Magnetic switch
+
+const int CABINET_SWITCH_PIN = D5;
+const unsigned long CABINET_WARNING_TIME = 10000;
+
+// Cabinet monitoring
+unsigned long checkoutStartedAt = 0;
+bool cabinetWasOpened = false;
+bool cabinetWarningOn = false;
+
+// Debounce the magnetic switch
+int cabinetState = HIGH;
+int lastCabinetReading = HIGH;
+
+unsigned long lastCabinetChange = 0;
+const unsigned long CABINET_DEBOUNCE = 50;
+
+
 // OLED Setup
 #define PIN_RESET D9
 #define DC_JUMPER 1
@@ -198,14 +216,17 @@ void handleObjectButton(int item) {
     if (selectedObject == item) {
         checkoutConfirmed = true;
 
-        Serial.print("Checkout confirmed for Object ");
+        // Begin monitoring the cabinet
+        checkoutStartedAt = millis();
+        cabinetWasOpened = (cabinetState == HIGH);
+        cabinetWarningOn = false;
+
+        Serial.print("Checkout selected: Object ");
         Serial.println(item + 1);
 
-        showMessage(
-            "OBJECT " + String(item + 1),
-            "CONFIRMED",
-            "TEST ONLY"
-        );
+        Serial.println("Take your item and close the cabinet.");
+
+        showMessage("TAKE ITEM", "CLOSE", "DRAWER");
     }
     else {
         // First press or different button selected
@@ -305,6 +326,12 @@ void setup() {
     pinMode(BUTTON_PINS[i], INPUT);
 }
 
+    //Initialize the magnetic switch
+    pinMode(CABINET_SWITCH_PIN, INPUT);
+
+    cabinetState = digitalRead(CABINET_SWITCH_PIN);
+    lastCabinetReading = cabinetState;
+
     //Initialize the RFID scanner
     mfrc522.setSPIConfig();
     mfrc522.PCD_Init();
@@ -336,6 +363,67 @@ Purpose: Keeps the system running once setup is complete.
 void loop() {
     //starts communication with the Blynk app
     Blynk.run();
+
+    // Read the magnetic cabinet switch
+    int cabinetReading = digitalRead(CABINET_SWITCH_PIN);
+
+    if (cabinetReading != lastCabinetReading) {
+        lastCabinetChange = millis();
+    }
+
+    // Only process a stable reading
+    if (millis() - lastCabinetChange >= CABINET_DEBOUNCE) {
+
+        if (cabinetReading != cabinetState) {
+            cabinetState = cabinetReading;
+
+            if (checkoutConfirmed) {
+
+                if (cabinetState == HIGH) {
+                    cabinetWasOpened = true;
+                    Serial.println("CABINET OPENED");
+                }
+
+                // Cabinet was opened, and is now closed
+                else if (cabinetWasOpened) {
+
+                    Serial.println("CABINET CLOSED");
+
+                    if (cabinetWarningOn) {
+                        noTone(SPEAKER_PIN);
+                        cabinetWarningOn = false;
+                    }
+
+                    Serial.println("Cabinet test complete!");
+                    Serial.println("No checkout recorded yet.");
+
+                    checkoutConfirmed = false;
+                    selectedObject = -1;
+                    cabinetWasOpened = false;
+
+                    showMessage("CABINET", "CLOSED", "TEST ONLY");
+                }
+            }
+        }
+    }
+
+    lastCabinetReading = cabinetReading;
+
+    // Start warning if the cabinet remains open
+    // for 10 seconds after checkout confirmation
+    if (checkoutConfirmed &&
+        cabinetState == HIGH &&
+        millis() - checkoutStartedAt >= CABINET_WARNING_TIME &&
+        !cabinetWarningOn) {
+
+        cabinetWarningOn = true;
+
+        Serial.println("WARNING: CLOSE THE CABINET!");
+
+        tone(SPEAKER_PIN, 1100);
+        showMessage("PLEASE", "CLOSE", "CABINET");
+    }
+
 
     // Check all three equipment buttons
     for (int i = 0; i < 3; i++) {
@@ -419,6 +507,14 @@ void loop() {
             
             // If this user is already logged in, log them out and prevent wasting time
             if (activeBorrower == i) {
+
+                if (checkoutConfirmed) {
+                    Serial.println("Close the cabinet before logging out.");
+
+                    showMessage("CLOSE", "CABINET", "FIRST");
+                    break;
+                }
+
                 Serial.print("Goodbye!");
                 activeBorrower = -1;
                 selectedObject = -1;
