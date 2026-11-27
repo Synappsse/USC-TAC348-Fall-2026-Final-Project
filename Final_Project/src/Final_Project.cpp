@@ -17,10 +17,13 @@ SYSTEM_THREAD(ENABLED);
 const int SS_PIN = A0;
 const int RST_PIN = A1;
 
+//Pins for speaker
+const int SPEAKER_PIN = A2;
+
 //Pin for returns sensors
 const int RETURN_BEAM_PIN = D6;
 int lastBeamState = HIGH; // Remember the previous sensor reading
-
+bool beamWasBroken = false;//if there was an object in the sensors path or not
 
 // OLED Setup
 #define PIN_RESET D9
@@ -209,6 +212,19 @@ BLYNK_WRITE(V1) {
     }
 }
 
+
+/*****************************************************************************
+Item: Speaker functions
+Purpose: Sets up the specific sounds for user auth feedback
+*****************************************************************************/
+void playAccessGranted() {
+    tone(SPEAKER_PIN, 2200, 150);
+}
+
+void playAccessDenied() {
+    tone(SPEAKER_PIN, 1100, 450);
+}
+
 /*****************************************************************************
 Item: Setup function
 Purpose: Sets up the P2, RFID devices and prints generic start message
@@ -216,7 +232,8 @@ Purpose: Sets up the P2, RFID devices and prints generic start message
 void setup() {
     Serial.begin(9600); 
 
-    
+    pinMode(SPEAKER_PIN, OUTPUT); //set the speaker pin to output so we can play sounds
+
     // Initialize the return sensor
     pinMode(RETURN_BEAM_PIN, INPUT_PULLUP);
     lastBeamState = digitalRead(RETURN_BEAM_PIN);
@@ -255,17 +272,19 @@ void loop() {
     //starts communication with the Blynk app
     Blynk.run();
 
-    // Read the infrared break-beam sensor
     int beamState = digitalRead(RETURN_BEAM_PIN);
-    if (beamState != lastBeamState) { //if we detect a change in the sensor, print out our findings
+    if (beamState != lastBeamState) { //if a change in the sensor is detected, check if the beam was broken or restored
         if (beamState == LOW) {
-            Serial.println("RETURN SENSOR: RETURN IN PROGRESS");
+            Serial.println("RETURN IN PROGRESS");
+            beamWasBroken = true;
         }
-        else {
-            Serial.println("RETURN SENSOR: RETURN COMPLETE");
+        else if (beamWasBroken) {
+            Serial.println("RETURN COMPLETE");
+            beamWasBroken = false;
         }
-        lastBeamState = beamState; //update for next loop iteration
+        lastBeamState = beamState;
     }
+
 
 
    // Request saved users once after startup
@@ -321,16 +340,17 @@ void loop() {
                 Serial.print("Goodbye!");
                 activeBorrower = -1; //resets the active user to a nonexistant number
                 showMessage("Goodbye!", "", "");
+                
                 delay(3000);//wait 3 seconds to confirm user logout then return to main page
                 showMessage("IT LOANS", "SCAN CARD", "");
                 break;
             }
 
-
             if (activeBorrower != -1) { //If we are logged in as user x, but user y scans in... (-1 is the flag for NO CURRENT active user)
                 Serial.print("Station in use by: ");
                 Serial.println(users[activeBorrower].userID);
 
+                playAccessDenied();
                 showMessage("WRONG ACTIVE USER", "PLEASE", "LOG OUT FIRST"); //let user y know they must wait
                 break;
             }
@@ -348,7 +368,8 @@ void loop() {
             if (users[i].isLATE) {
                 Serial.println("ACCOUNT RESTRICTED");
                 Serial.println("ACCESS DENIED");
-
+                
+                playAccessDenied();
                 showMessage(users[i].userID, "USER", "LATE!        Return your item!"); // extra space is workaround for small display screen
             }
            
@@ -361,7 +382,8 @@ void loop() {
 
                 Serial.print("User logged in: ");
                 Serial.println(users[activeBorrower].userID);
-
+               
+                playAccessGranted();
                 showMessage(users[i].userID, "ACCESS", "GRANTED");
             }
 
@@ -380,12 +402,8 @@ void loop() {
         Serial.println("UNKNOWN CARD");
         Serial.println("ACCESS DENIED");
 
+        playAccessDenied();
         showMessage("UNKNOWN", "CARD", "DENIED");
     }
     mfrc522.PICC_HaltA();
-
-    /*
-    delay(2000);
-    showMessage("IT LOANS", "SCAN CARD", "");
-    */
 }
