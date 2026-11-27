@@ -1,51 +1,69 @@
 #include "Particle.h"
-
 SYSTEM_MODE(AUTOMATIC);
 SYSTEM_THREAD(ENABLED);
 
+//********************************************************************************************************** */
+// Blynk configuration, if you copy this project please use your own Blynk template ID, name, and auth token
+//********************************************************************************************************** */
 #define BLYNK_TEMPLATE_ID "TMPL2OdTyJHF-"
 #define BLYNK_TEMPLATE_NAME "Final Project"
 #define BLYNK_AUTH_TOKEN "U406i38WWsQGzZvp4W4_z7iiS3mOXgHH"
 
 #define ARDUINOJSON_ENABLE_ARDUINO_STRING 1
 
+//Bring in the libraries for the OLED, Blynk, and RFID scanner
 #include <ArduinoJson.h>
 #include <blynk.h>
 #include <MFRC522.h>
 #include <SparkFunMicroOLED.h>
 
+
+//***********************************************************************************************************/
+// Pin and variable setup for the project. 
+//***********************************************************************************************************/
+
+//**********************/
+//Setup for RFID scanner
+//**********************/
 const int SS_PIN = A0;
 const int RST_PIN = A1;
 
+//**********************/
 //Setup for buttons
+//**********************/
 const int BUTTON_PINS[3] = {D2, D3, D4};
 const char* BUTTON_COLORS[3] = {"RED", "GREEN", "BLUE"};
 
-int selectedObject = -1; // -1 means no equipment selected
-bool checkoutConfirmed = false; //only set to true when the user has confirmed their checkout
+int selectedObject = -1; //Denotes the object currently chosen for checkout 
+bool checkoutConfirmed = false; //Flag to proceed with checkout after user confirms their selection
 
-int lastButtonReading[3] = {HIGH, HIGH, HIGH};// Prevent one press from registering repeatedly
+//Button latch setup
+int lastButtonReading[3] = {HIGH, HIGH, HIGH};
 int buttonState[3] = {HIGH, HIGH, HIGH};
 
 unsigned long lastButtonChange[3] = {0, 0, 0};
 const unsigned long BUTTON_DEBOUNCE = 40;
 
-//Pins for speaker
+//**********************/
+//Setup for speaker
+//**********************/
 const int SPEAKER_PIN = A2;
 
-//Pin for returns sensors
+//**********************/
+//Setup for return sensor
+//**********************/
 const int RETURN_BEAM_PIN = D6;
-int lastBeamState = HIGH; // Remember the previous sensor reading
-bool beamWasBroken = false;//if there was an object in the sensors path or not
+int lastBeamState = HIGH; // "Latch" for the last state of the return sensor
+bool beamWasBroken = false;//Flag to verify the current state of the return
 
-//Pins for Magnetic switch
-
+//**********************/
+//Setup for cabinet status
+//**********************/
 const int CABINET_SWITCH_PIN = D5;
-const unsigned long CABINET_WARNING_TIME = 10000;
 
-// Cabinet monitoring
+const unsigned long CABINET_WARNING_TIME = 10000; //This is the ms time before our system warns the user to close the cabinet after checkout confirmation
 unsigned long checkoutStartedAt = 0;
-bool cabinetWasOpened = false;
+bool cabinetWasOpened = false;  
 bool cabinetWarningOn = false;
 
 // Debounce the magnetic switch
@@ -55,14 +73,18 @@ int lastCabinetReading = HIGH;
 unsigned long lastCabinetChange = 0;
 const unsigned long CABINET_DEBOUNCE = 50;
 
-
-// OLED Setup
+//**********************/
+//Setup for OLED
+//**********************/
 #define PIN_RESET D9
 #define DC_JUMPER 1
 
-//Setup for pins of OLED and RFID scanner
+//*****************************/
+//Setup for OLED and RFID pins
+//*****************************/
 MFRC522 mfrc522(SS_PIN, RST_PIN);
 MicroOLED oled(MODE_I2C, PIN_RESET, DC_JUMPER);
+
 /****************************************************************************
 Item: User class declaration
 Purpose: Creates a class for admins to oversee and manage user profiles 
@@ -83,18 +105,18 @@ public:
 };
 
 /*This is an array of users with their specific data.
-  The array may later be updated for dynamic allocation
+  The array can later be updated for dynamic allocation
   should users wish to be added. As of now, the 3 users 
   are connected to the 2 cards and 1 keychain given in 
   the TAC348 class kit.
 
-  Secondly, this is the starting setup of the users database, 
-  it is automatically updated upon startup by grabbing the
+  Secondly, this is the starting setup of the users database. 
+  It is automatically updated upon startup by grabbing the
   latest information from Losant.
 */
 User users[] = {
-    User("USER001", "25 F5 1D E0", false, 0), //USER001 will be the sole admin, and a tester
-    User("USER002", "5A C1 F3 35", true, 3), //Users 002 and 003 will be the "bad" and "good" users respectively
+    User("USER001", "25 F5 1D E0", false, 0), 
+    User("USER002", "5A C1 F3 35", true, 3), 
     User("USER003", "32 7F D0 55", false, 1)
 };
 
