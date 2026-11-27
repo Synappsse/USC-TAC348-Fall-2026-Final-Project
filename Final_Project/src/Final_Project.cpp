@@ -17,6 +17,11 @@ SYSTEM_THREAD(ENABLED);
 const int SS_PIN = A0;
 const int RST_PIN = A1;
 
+//Pin for returns sensors
+const int RETURN_BEAM_PIN = D6;
+int lastBeamState = HIGH; // Remember the previous sensor reading
+
+
 // OLED Setup
 #define PIN_RESET D9
 #define DC_JUMPER 1
@@ -211,6 +216,13 @@ Purpose: Sets up the P2, RFID devices and prints generic start message
 void setup() {
     Serial.begin(9600); 
 
+    
+    // Initialize the return sensor
+    pinMode(RETURN_BEAM_PIN, INPUT_PULLUP);
+    lastBeamState = digitalRead(RETURN_BEAM_PIN);
+
+    Serial.println("Return sensor initialized!"); 
+
     //Initialize the RFID scanner
     mfrc522.setSPIConfig();
     mfrc522.PCD_Init();
@@ -243,9 +255,20 @@ void loop() {
     //starts communication with the Blynk app
     Blynk.run();
 
-    //Request the most up to date user acc info 
+    // Read the infrared break-beam sensor
+    int beamState = digitalRead(RETURN_BEAM_PIN);
+    if (beamState != lastBeamState) { //if we detect a change in the sensor, print out our findings
+        if (beamState == LOW) {
+            Serial.println("RETURN SENSOR: RETURN IN PROGRESS");
+        }
+        else {
+            Serial.println("RETURN SENSOR: RETURN COMPLETE");
+        }
+        lastBeamState = beamState; //update for next loop iteration
+    }
 
-// Request saved users once after startup
+
+   // Request saved users once after startup
    static unsigned long loopStartTime = millis();
 
    //if we are on time and ready to begin, lookup the user records
