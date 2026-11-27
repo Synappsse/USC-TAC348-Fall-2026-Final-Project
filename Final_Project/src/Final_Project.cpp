@@ -17,6 +17,19 @@ SYSTEM_THREAD(ENABLED);
 const int SS_PIN = A0;
 const int RST_PIN = A1;
 
+//Setup for buttons
+const int BUTTON_PINS[3] = {D2, D3, D4};
+const char* BUTTON_COLORS[3] = {"RED", "GREEN", "BLUE"};
+
+int selectedObject = -1; // -1 means no equipment selected
+bool checkoutConfirmed = false; //only set to true when the user has confirmed their checkout
+
+int lastButtonReading[3] = {HIGH, HIGH, HIGH};// Prevent one press from registering repeatedly
+int buttonState[3] = {HIGH, HIGH, HIGH};
+
+unsigned long lastButtonChange[3] = {0, 0, 0};
+const unsigned long BUTTON_DEBOUNCE = 40;
+
 //Pins for speaker
 const int SPEAKER_PIN = A2;
 
@@ -162,6 +175,53 @@ void showMessage(String line1, String line2, String line3) {
     oled.display();
 }
 
+//Displays the checkout menu for users to select from
+void showCheckoutMenu() {
+    showMessage("1 RED", "2 GREEN", "3 BLUE");
+}
+
+//Setup for object selection
+void handleObjectButton(int item) {
+
+    // Must have a valid logged-in borrower
+    if (!accountsLoaded || activeBorrower == -1) {
+        Serial.println("Scan your RFID card first!");
+        return;
+    }
+
+    if (checkoutConfirmed) {
+        Serial.println("Selection already confirmed.");
+        return;
+    }
+
+    // Same button pressed twice
+    if (selectedObject == item) {
+        checkoutConfirmed = true;
+
+        Serial.print("Checkout confirmed for Object ");
+        Serial.println(item + 1);
+
+        showMessage(
+            "OBJECT " + String(item + 1),
+            "CONFIRMED",
+            "TEST ONLY"
+        );
+    }
+    else {
+        // First press or different button selected
+        selectedObject = item;
+
+        Serial.print("Selected Object ");
+        Serial.println(item + 1);
+
+        showMessage(
+            "OBJ" + String(item + 1) + " " + BUTTON_COLORS[item],
+            "LOAN TBD",
+            "SAME=YES"
+        );
+    }
+}
+
 /****************************************************************************
 Item: Write to user 
 Purpose: Unlocks user accounts if an admin sends the unlock request 
@@ -235,10 +295,15 @@ void setup() {
     pinMode(SPEAKER_PIN, OUTPUT); //set the speaker pin to output so we can play sounds
 
     // Initialize the return sensor
-    pinMode(RETURN_BEAM_PIN, INPUT_PULLUP);
+    pinMode(RETURN_BEAM_PIN, INPUT);
     lastBeamState = digitalRead(RETURN_BEAM_PIN);
 
     Serial.println("Return sensor initialized!"); 
+
+    //Initialize the buttons
+    for (int i = 0; i < 3; i++) {
+    pinMode(BUTTON_PINS[i], INPUT);
+}
 
     //Initialize the RFID scanner
     mfrc522.setSPIConfig();
@@ -272,6 +337,25 @@ void loop() {
     //starts communication with the Blynk app
     Blynk.run();
 
+    // Check all three equipment buttons
+    for (int i = 0; i < 3; i++) {
+        int reading = digitalRead(BUTTON_PINS[i]);
+        if (reading != lastButtonReading[i]) {
+            lastButtonChange[i] = millis();
+        }
+
+        // Only accept a stable button state
+        if (millis() - lastButtonChange[i] > BUTTON_DEBOUNCE) {
+            if (reading != buttonState[i]) {
+                buttonState[i] = reading;
+                if (buttonState[i] == LOW) {
+                    handleObjectButton(i);
+                }
+            }
+        }
+        lastButtonReading[i] = reading;
+    }
+
     int beamState = digitalRead(RETURN_BEAM_PIN);
     if (beamState != lastBeamState) { //if a change in the sensor is detected, check if the beam was broken or restored
         if (beamState == LOW) {
@@ -284,8 +368,6 @@ void loop() {
         }
         lastBeamState = beamState;
     }
-
-
 
    // Request saved users once after startup
    static unsigned long loopStartTime = millis();
@@ -338,10 +420,13 @@ void loop() {
             // If this user is already logged in, log them out and prevent wasting time
             if (activeBorrower == i) {
                 Serial.print("Goodbye!");
-                activeBorrower = -1; //resets the active user to a nonexistant number
+                activeBorrower = -1;
+                selectedObject = -1;
+                checkoutConfirmed = false;
+
                 showMessage("Goodbye!", "", "");
-                
                 delay(3000);//wait 3 seconds to confirm user logout then return to main page
+                
                 showMessage("IT LOANS", "SCAN CARD", "");
                 break;
             }
@@ -378,13 +463,19 @@ void loop() {
                 Serial.println("ACCESS GRANTED");
 
                 // Log in the authenticated user
+                                
                 activeBorrower = i;
+                selectedObject = -1;
+                checkoutConfirmed = false;
 
                 Serial.print("User logged in: ");
                 Serial.println(users[activeBorrower].userID);
-               
+                
                 playAccessGranted();
                 showMessage(users[i].userID, "ACCESS", "GRANTED");
+                delay(3000);
+
+                showCheckoutMenu();
             }
 
 
